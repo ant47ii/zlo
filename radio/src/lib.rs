@@ -15,10 +15,12 @@ use serde::{Deserialize, Serialize};
 
 use embedded_nrf24l01_async::{Configuration, CrcMode, DataRate, NRF24L01, RxMode, StandbyMode, TxMode};
 
-// Радио-настройки
-pub const RADIO_CHANNEL: u8 = 110;				// Номер радиочастотного канала
-pub const RADIO_POLL_INTERVAL_MS: u64 = 20;		// Задержка опроса радио (в миллисекундах)
-pub const RADIO_ADDRESS: &[u8; 5] = b"zlo47";	// Настройки адресации (строковые константы)
+/// Задержка опроса радио (в миллисекундах)
+pub const RADIO_POLL_INTERVAL_MS: u64 = 20;
+/// Номер радиочастотного канала
+const RADIO_CHANNEL: u8 = 110;
+/// Адрес
+const RADIO_ADDRESS: &[u8; 5] = b"zlo47";
 
 pub type NrfRx<CE, SPI> = RxMode<NRF24L01<<CE as embedded_hal::digital::ErrorType>::Error, CE, SPI>>;
 pub type NrfTx<CE, SPI> = TxMode<NRF24L01<<CE as embedded_hal::digital::ErrorType>::Error, CE, SPI>>;
@@ -63,11 +65,6 @@ where
 {
 	let mut nrf = NRF24L01::new(ce, spi_device).await.unwrap();
 
-	match nrf.device().is_connected().await {
-		Ok(b) => info!("nrf is {}", b),
-		Err(_) => error!("nrf disconnected"),
-	}
-
 	nrf.set_frequency(RADIO_CHANNEL).await.unwrap();
 	nrf.set_auto_retransmit(5, 4).await.unwrap();
 	nrf.set_auto_ack(&[true, false, false, false, false, false]).await.unwrap();
@@ -75,7 +72,6 @@ where
 	nrf.set_rf(&DataRate::R2Mbps, 0).await.unwrap();
 	nrf.set_pipes_rx_enable(&[true, false, false, false, false, false]).await.unwrap();
 	nrf.set_pipes_rx_lengths(&[None; 6]).await.unwrap();
-	//nrf.set_pipes_rx_lengths(&[Some(4), None, None, None, None, None]).await.unwrap();
 	nrf.set_crc(CrcMode::TwoBytes).await.unwrap();
 	
 	nrf.set_rx_addr(0, RADIO_ADDRESS).await.unwrap();

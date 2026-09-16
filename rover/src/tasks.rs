@@ -1,4 +1,4 @@
-use embedded_hal::{digital::OutputPin, pwm::SetDutyCycle};
+use embedded_hal::{pwm::SetDutyCycle};
 use radio::{JoystickCommand, JoystickCoords};
 use embassy_sync::{channel::{DynamicReceiver, DynamicSender}, watch::{DynReceiver, DynSender}};
 use embassy_time::{Duration, with_timeout};
@@ -13,8 +13,7 @@ type Stm32SpiDevice = embedded_hal_bus::spi::ExclusiveDevice<Stm32SpiBus, Stm32C
 type Stm32NrfRx = radio::NrfRx<Stm32CePin, Stm32SpiDevice>;
 
 type Stm32Rover = RoverDrive<
-    embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>,
-    embassy_stm32::gpio::Output<'static>
+    embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>
 >;
 
 /// Слушает радио
@@ -36,13 +35,12 @@ pub async fn motor_task(
     run_rover_control(coords_receiver, drive).await;
 }
 
-async fn run_rover_control<CH, STBY>(
+async fn run_rover_control<CH>(
     mut coords_receiver: DynReceiver<'static, JoystickCoords>, 
-    mut drive: RoverDrive<CH, STBY>
+    mut drive: RoverDrive<CH>
 )
 where
-    CH: SetDutyCycle,
-    STBY: OutputPin,
+    CH: SetDutyCycle
 {
     loop {
         match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const

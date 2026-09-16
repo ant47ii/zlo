@@ -55,7 +55,7 @@ async fn main(spawner: Spawner) {
 	//               DRV8833
 	// ==========================================
 
-	let stby = Output::new(p.PA12, Level::High, Speed::Low);
+	let mut stby = Output::new(p.PA12, Level::Low, Speed::Low);
 
 	let bin2_pin = PwmPin::new(p.PA8, OutputType::PushPull);
 	let bin1_pin = PwmPin::new(p.PA9, OutputType::PushPull);
@@ -83,9 +83,10 @@ async fn main(spawner: Spawner) {
 		parts.ch1, 
 		parts.ch2, 
 		parts.ch3, 
-		parts.ch4,
-		stby
+		parts.ch4
 	);
+
+	stby.set_high();
 
 	// ==========================================
 	//                 NRF24
