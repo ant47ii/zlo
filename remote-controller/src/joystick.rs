@@ -11,13 +11,6 @@ pub struct RemoteCommand {
 	pub y: i8,
 }
 
-impl RemoteCommand {
-    // Возвращает массив, ссылку на который &[u8] можно сразу передать в функцию
-    pub fn to_bytes(&self) -> [u8; 2] {
-        [self.x as u8, self.y as u8]
-    }
-}
-
 pub struct Joystick<'d, T: embassy_stm32::adc::RxDma<ADC1> + ChannelInstance > {
 	axis_x: AnyAdcChannel<'d, ADC1>,
 	axis_y: AnyAdcChannel<'d, ADC1>,

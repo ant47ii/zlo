@@ -19,18 +19,18 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::text::Text;
 use heapless::String;
 use radio::{RADIO_POLL_INTERVAL_MS, init_tx_radio};
-use ssd1306::mode::{DisplayConfig, DisplayConfigAsync};
+use ssd1306::mode::{DisplayConfigAsync};
 use ssd1306::rotation::DisplayRotation;
 use ssd1306::size::DisplaySize128x64;
-use ssd1306::{I2CDisplayInterface, Ssd1306, Ssd1306Async};
+use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 
-use embassy_time::{Delay, Timer};
+use embassy_time::{Timer};
 
 use defmt::{error, info};
 use defmt_rtt as _;
 
 use embassy_stm32::dma::InterruptHandler;
-use embassy_stm32::{bind_interrupts, exti, i2c, interrupt, peripherals};
+use embassy_stm32::{bind_interrupts, i2c, peripherals};
 use panic_halt as _;
 
 use embassy_executor::{self as _}; 
@@ -156,8 +156,8 @@ async fn main(_spawner: Spawner) {
 	);
 
 	let interface = I2CDisplayInterface::new(i2c);
-	let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_buffered_graphics_mode();
-	display.init().unwrap();
+	let mut display = Ssd1306Async::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_buffered_graphics_mode();
+	display.init().await.unwrap();
 	display.clear(BinaryColor::Off).unwrap();
 
 	let text_style = MonoTextStyleBuilder::new()
@@ -165,13 +165,10 @@ async fn main(_spawner: Spawner) {
         .text_color(BinaryColor::On)
         .build();
 
+	// ==========================================
+	//               JOYSTICK
+	// ==========================================
 
-	//let mut dsp = Ssd1306Async::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_buffered_graphics_mode();
-	//dsp.init().await;
-	//dsp.flush().await; 
-
-
-	
 	let mut joy = Joystick::new(
 		p.PA2.degrade_adc(),
 		p.PA3.degrade_adc(), 
@@ -214,7 +211,7 @@ async fn main(_spawner: Spawner) {
 			}
 		}
 
-		display.flush().unwrap();
+		display.flush().await.unwrap();
 		Timer::after_millis(RADIO_POLL_INTERVAL_MS).await;
 	}
 }
