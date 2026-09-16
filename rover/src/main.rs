@@ -128,8 +128,8 @@ async fn main(spawner: Spawner) {
 	// ==========================================
 
 	// Интерфейсы для координат (Watch)
-	let coords_send = COORDS_WATCH.dyn_sender();// sender().as_dyn();
-	let coords_recv = COORDS_WATCH.dyn_receiver().unwrap();// receiver().unwrap().as_dyn();
+	let coords_send = COORDS_WATCH.dyn_sender();
+	let coords_recv = COORDS_WATCH.dyn_receiver().unwrap();
 
 	// Интерфейсы для команд (Channel)
 	//let cmd_send = CMD_CHANNEL.dyn_sender();

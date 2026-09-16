@@ -185,6 +185,7 @@ async fn main(_spawner: Spawner) {
 
 
 	let mut text_buffer: String<32> = String::new();
+	let mut radio_buffer = [0u8; 16];
 
 	loop {
 
@@ -200,43 +201,22 @@ async fn main(_spawner: Spawner) {
 			.draw(&mut display)
 			.unwrap();
 		
-
 		if joy_x != 0 || joy_y != 0 {
-			if tx.can_send().await.unwrap() {
-				let command: [u8; 3] = [1, joy_x as u8, joy_y as u8];
-				match tx.send(&command).await {
-					Ok(s) => info!("send status = {:?}", s.0),
-					Err(e) => error!("send error {}", defmt::Debug2Format(&e)),
-				}
-			}
-
-
-			Timer::after_millis(75).await;
+			let command = radio::RadioCommand::Coords(radio::JoystickCoords { x: joy_x, y: joy_y });
+			let success = radio::send(&mut tx, command, &mut radio_buffer).await;
 			
-			match tx.poll_send().await {
-				Ok(ack_received) => {
-					info!("OK = {}", ack_received);
-					if ack_received {
-						Text::new("OK", Point::new(10, 40), text_style)
-							.draw(&mut display)
-							.unwrap();
-					} else {
-						Text::new("ERROR", Point::new(10, 40), text_style)
-							.draw(&mut display)
-							.unwrap();
-					}
-
-				}
-				Err(e) => {
-					error!("pool ERROR {}", defmt::Debug2Format(&e));
-				}
+			if success {
+				Text::new("OK", Point::new(10, 40), text_style)
+					.draw(&mut display)
+					.unwrap();
+			} else {
+				Text::new("ERROR", Point::new(10, 40), text_style)
+					.draw(&mut display)
+					.unwrap();
 			}
-
-			
 		}
 
 		display.flush().unwrap();
-		//Timer::after_millis(RADIO_POLL_INTERVAL_MS).await;
-		Timer::after_millis(10).await;
+		Timer::after_millis(RADIO_POLL_INTERVAL_MS).await;
 	}
 }

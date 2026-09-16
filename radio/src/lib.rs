@@ -7,10 +7,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel/*, DynamicSender*/};
 use embassy_sync::watch::{DynSender, Watch};
 
-
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer, with_timeout};
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::spi::SpiDevice;
+
+use serde::{Deserialize, Serialize};
 
 use embedded_nrf24l01_async::{Configuration, CrcMode, DataRate, NRF24L01, RxMode, StandbyMode, TxMode};
 
@@ -28,15 +29,15 @@ type NrfStandby<CE, SPI> = StandbyMode<NRF24L01<<CE as embedded_hal::digital::Er
 
 
 /// Джойстик
-#[derive(Clone, Copy, Debug, PartialEq)]	// PartialEq важен для Watch
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct JoystickCoords {
-	pub val1: i8,
-	pub val2: i8,
+	pub x: i8,
+	pub y: i8,
 }
 
-// Команды
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum RadioCommand {
+	Coords(JoystickCoords),
 	SetHeadlights(bool),
 	SetCameraAngle(u8),
 }
@@ -86,6 +87,7 @@ where
 	nrf
 }
 
+/// Инициализация передатчика
 pub async fn init_tx_radio<CE, SPI>(
 	ce: CE, 
 	spi_device: SPI
@@ -98,6 +100,7 @@ where
 	nrf.tx().await.unwrap()
 }
 
+/// Инициализация приёмника
 pub async fn init_rx_radio<CE, SPI>(
 	ce: CE, 
 	spi_device: SPI
@@ -110,34 +113,57 @@ where
 	nrf.rx().await.unwrap()
 }
 
+/// Отправить команду
+pub async fn send<CE, SPI>(
+	tx: &mut NrfTx<CE, SPI>, 
+	command: RadioCommand, 
+	buffer: &mut [u8; 16]
+) -> bool
+where
+	CE: OutputPin<Error = Infallible>,
+	SPI: SpiDevice,
+{
+	if !tx.can_send().await.unwrap() {
+		return false;
+	}
+
+	let packet = postcard::to_slice(&command, buffer).unwrap();
+	if let Err(_) = tx.send(&packet).await {
+		return false;
+	}
+
+	let result = with_timeout(Duration::from_millis(75), async {
+		loop {
+			match tx.poll_send().await {
+				Ok(ack_received) => return ack_received,
+				Err(_) =>  Timer::after_micros(500).await
+			}
+		}
+	}).await;
+
+	match result {
+		Ok(ack_status) => ack_status,
+		Err(_timeout_error) => false
+	}
+}
+
 async fn parse_and_route_packet(
 	payload: &[u8],
 	coords_sender: &DynSender<'static, JoystickCoords>,
 	//cmd_sender: &DynamicSender<'static, RadioCommand>,
 ) {
-	match payload {
-		// [Тип 1, X, Y, ..] -> Координаты джойстика
-		&[1, x, y, ..] => {
-			info!("команда");
-			coords_sender.send(JoystickCoords { val1: x as i8, val2: y as i8 });
+	match postcard::from_bytes::<RadioCommand>(payload) {
+		Ok(RadioCommand::Coords(coords)) => {
+			coords_sender.send(coords);
 		}
-		
-		// [Тип 2, ИД 1 (Фары), Статус, ..]
-		/*&[2, 1, status, ..] => {
-			cmd_sender.send(RadioCommand::SetHeadlights(status != 0)).await;
+		Ok(RadioCommand::SetHeadlights(on)) => {
+			//cmd_sender.send(RadioCommand::SetHeadlights(on));
 		}
-		
-		// [Тип 2, ИД 2 (Камера), Угол, ..]
-		&[2, 2, angle, ..] => {
-			cmd_sender.send(RadioCommand::SetCameraAngle(angle)).await;
-		}*/
-
-		// Пакет не подошел ни под одно правило протокола
-		_ => {
-			/*error!("Получен неизвестный или битый пакет. Длина: {}, первый байт: {}", 
-				payload.len(), 
-				if !payload.is_empty() { payload[0] } else { 0 }
-			);*/
+		Ok(RadioCommand::SetCameraAngle(angle)) => {
+			//cmd_sender.send(RadioCommand::SetCameraAngle(angle));
+		}
+		Err(_) => {
+			// Ошибка десериализации: пакет поврежден или не совпадает протокол
 		}
 	}
 }

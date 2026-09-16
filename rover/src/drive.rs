@@ -68,7 +68,7 @@ where
     /// Устанавливает скорость для конкретного борта (от -100 до 100)
     pub fn set_speed(&mut self, side: Side, speed: i8) {
         let speed = speed.clamp(-100, 100);
-        let safe_max_duty = (self.max_duty as u32 * 80) / 100; // Лимит 80% для 2S батареи
+        let safe_max_duty = (self.max_duty as u32 * 80) / 100; // Лимит 80% для 2S батареи TODO: не каждый раз ведь считать! вынести в инициализацию
 
         // Выбираем нужную пару каналов в зависимости от выбранного борта
         let (ch_fwd, ch_rev) = match side {
