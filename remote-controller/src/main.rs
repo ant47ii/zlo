@@ -2,11 +2,10 @@
 #![no_main]
 
 mod joystick;
+mod joystick_stm32;
 mod display;
-use crate::joystick::Joystick;
-use crate::display::OledDisplay;
 
-use embassy_stm32::adc::{ AdcChannel};
+use embassy_stm32::adc::{ Adc, AdcChannel};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, MSIRange, Pll, PllDiv, PllMul, PllPreDiv, PllSource, Sysclk};
 use embassy_stm32::time::Hertz;
@@ -42,7 +41,7 @@ use core::fmt::Write;
 
 #[allow(unused)]
 fn setup_timestamp() {
-    defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
+	defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
 }
 
 bind_interrupts!(struct Irqs {
@@ -161,22 +160,31 @@ async fn main(_spawner: Spawner) {
 	display.clear(BinaryColor::Off).unwrap();
 
 	let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .build();
+		.font(&FONT_6X10)
+		.text_color(BinaryColor::On)
+		.build();
 
 	// ==========================================
 	//               JOYSTICK
 	// ==========================================
+	let adc_config = embassy_stm32::adc::AdcConfig {
+		averaging: Some(embassy_stm32::adc::Averaging::Samples16),
+		resolution: Some(embassy_stm32::adc::Resolution::BITS8),
+		..Default::default()
+	};
+	let adc = Adc::new_with_config(p.ADC1, adc_config);
+	
+    let platform_reader = joystick_stm32::Stm32JoystickAdc::new(
+        p.PA2.degrade_adc(),
+        p.PA3.degrade_adc(),
+        adc,
+        p.GPDMA1_CH4,
+    );
 
-	let mut joy = Joystick::new(
-		p.PA2.degrade_adc(),
-		p.PA3.degrade_adc(), 
-		p.ADC1, 
-		p.GPDMA1_CH4
-	);
+ 	let mut joystick = joystick::Joystick::new(platform_reader);
+	joystick.calibrate().await;
 
-	joy.calibrate().await;
+
 
 
 	let mut text_buffer: String<32> = String::new();
@@ -184,7 +192,7 @@ async fn main(_spawner: Spawner) {
 
 	loop {
 
-		let values = joy.read().await;
+		let values = joystick.read().await;
 		let joy_x: i8 = joystick::apply_joystick_expo(values.x, 0.4);
 		let joy_y: i8 = joystick::apply_joystick_expo(values.y, 0.4);
 
