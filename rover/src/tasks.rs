@@ -1,6 +1,6 @@
 use embedded_hal::{digital::OutputPin, pwm::SetDutyCycle};
-use radio::{JoystickCoords};
-use embassy_sync::watch::{DynReceiver, DynSender};
+use radio::{JoystickCommand, JoystickCoords};
+use embassy_sync::{channel::{DynamicReceiver, DynamicSender}, watch::{DynReceiver, DynSender}};
 use embassy_time::{Duration, with_timeout};
 
 use crate::drive::{RoverDrive};
@@ -21,9 +21,10 @@ type Stm32Rover = RoverDrive<
 #[embassy_executor::task]
 pub async fn radio_task(
     coords_sender: DynSender<'static, JoystickCoords>,
+    cmd_sender: DynamicSender<'static, JoystickCommand>,
 	rx: Stm32NrfRx
 ) {
-    radio::run_radio_reader(rx, coords_sender).await;
+    radio::run_radio_reader(rx, &coords_sender, &cmd_sender).await;
 }
 
 /// Управляет моторами
@@ -44,7 +45,7 @@ where
     STBY: OutputPin,
 {
     loop {
-        match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await {
+        match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const
             Ok(coords) => {
                 drive.arcade_drive(coords.x, coords.y);
             }
@@ -55,17 +56,12 @@ where
     }
 }
 
-/*#[embassy_executor::task]
-pub async fn hardware_task(cmd_receiver: DynamicReceiver<'static, RadioCommand>) {
+#[embassy_executor::task]
+pub async fn hardware_task(cmd_receiver: DynamicReceiver<'static, JoystickCommand>) {
 	loop {
 		let cmd = cmd_receiver.receive().await;
 		match cmd {
-			RadioCommand::SetHeadlights(on) => {
-				if on { info!("Фары: ВКЛ"); } else { info!("Фары: ВЫКЛ"); }
-			}
-			RadioCommand::SetCameraAngle(angle) => {
-				info!("Сервопривод: поворот камеры на {}°", angle);
-			}
-		}
+            
+        }
 	}
-}*/
+}

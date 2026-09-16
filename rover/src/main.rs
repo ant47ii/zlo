@@ -5,8 +5,8 @@ mod tasks;
 mod drive;
 
 use crate::drive::{RoverDrive};
-use crate::tasks::{motor_task, radio_task/*, hardware_task*/};
-use ::radio::{/*CMD_CHANNEL,*/ COORDS_WATCH, init_rx_radio};
+use crate::tasks::{motor_task, radio_task, hardware_task};
+use ::radio::{CMD_CHANNEL, COORDS_WATCH, init_rx_radio};
 
 use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 
@@ -132,12 +132,12 @@ async fn main(spawner: Spawner) {
 	let coords_recv = COORDS_WATCH.dyn_receiver().unwrap();
 
 	// Интерфейсы для команд (Channel)
-	//let cmd_send = CMD_CHANNEL.dyn_sender();
-	//let cmd_recv = CMD_CHANNEL.dyn_receiver();
+	let cmd_send = CMD_CHANNEL.dyn_sender();
+	let cmd_recv = CMD_CHANNEL.dyn_receiver();
 
-	spawner.spawn(radio_task(coords_send, rx/*, cmd_send*/).unwrap());
+	spawner.spawn(radio_task(coords_send, cmd_send, rx).unwrap());
 	spawner.spawn(motor_task(coords_recv, drive).unwrap());
-	//spawner.spawn(hardware_task(cmd_recv).unwrap());
+	spawner.spawn(hardware_task(cmd_recv).unwrap());
 
 	
 }

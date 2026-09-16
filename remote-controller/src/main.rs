@@ -46,19 +46,17 @@ fn setup_timestamp() {
 }
 
 bind_interrupts!(struct Irqs {
-//	EXTI0 => exti::InterruptHandler<interrupt::typelevel::EXTI0>;
-
-	// Дисплей
+	// DISPLAY
 	I2C1_EV => i2c::EventInterruptHandler<peripherals::I2C1>;
 	I2C1_ER => i2c::ErrorInterruptHandler<peripherals::I2C1>;
 	GPDMA1_CHANNEL2 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH2>;
 	GPDMA1_CHANNEL3 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH3>;
 
-	// nrf
+	// NRF24
 	GPDMA1_CHANNEL0 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH0>;
 	GPDMA1_CHANNEL1 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH1>;
 
-	// Джойстик
+	// JOYSTIC
 	GPDMA1_CHANNEL4 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH4>;
 });
 
@@ -202,8 +200,8 @@ async fn main(_spawner: Spawner) {
 			.unwrap();
 		
 		if joy_x != 0 || joy_y != 0 {
-			let command = radio::RadioCommand::Coords(radio::JoystickCoords { x: joy_x, y: joy_y });
-			let success = radio::send(&mut tx, command, &mut radio_buffer).await;
+			let radio_package = radio::RadioPackage::Coords(radio::JoystickCoords { x: joy_x, y: joy_y });
+			let success = radio::send(&mut tx, radio_package, &mut radio_buffer).await;
 			
 			if success {
 				Text::new("OK", Point::new(10, 40), text_style)
