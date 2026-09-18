@@ -11,6 +11,7 @@ bench = false
 
 [dependencies]
 radio = { path = "../radio" }
+joystick = { path = "../joystick", features = ["stm32"]}
 
 cortex-m = { version = "0.7.9", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7.6"
@@ -38,8 +39,6 @@ heapless = { version = "0.9.3"}
 
 panic-halt = "1.0.0"
 
-
-#embedded-nrf24l01-async = { version = "0.3.1" }
 
 [profile.dev]
 opt-level = "s"       # Оптимизация по размеру ("s" = size)

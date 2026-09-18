@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-mod joystick;
-mod joystick_stm32;
 mod display;
 
 use embassy_stm32::adc::{ Adc, AdcChannel};
@@ -25,7 +23,6 @@ use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 
 use embassy_time::{Timer};
 
-use defmt::{error, info};
 use defmt_rtt as _;
 
 use embassy_stm32::dma::InterruptHandler;
@@ -173,26 +170,24 @@ async fn main(_spawner: Spawner) {
 		..Default::default()
 	};
 	let adc = Adc::new_with_config(p.ADC1, adc_config);
-	
-    let platform_reader = joystick_stm32::Stm32JoystickAdc::new(
+
+    let platform_reader = joystick::Stm32JoystickAdc::new(
         p.PA2.degrade_adc(),
         p.PA3.degrade_adc(),
         adc,
         p.GPDMA1_CH4,
+		Irqs
     );
 
- 	let mut joystick = joystick::Joystick::new(platform_reader);
-	joystick.calibrate().await;
-
-
+ 	let mut joy = joystick::Joystick::new(platform_reader);
+	joy.calibrate().await;
 
 
 	let mut text_buffer: String<32> = String::new();
 	let mut radio_buffer = [0u8; 16];
 
 	loop {
-
-		let values = joystick.read().await;
+		let values = joy.read().await;
 		let joy_x: i8 = joystick::apply_joystick_expo(values.x, 0.4);
 		let joy_y: i8 = joystick::apply_joystick_expo(values.y, 0.4);
 
