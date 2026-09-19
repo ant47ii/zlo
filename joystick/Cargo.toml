@@ -6,7 +6,9 @@ edition = "2021"
 [features]
 default = []
 stm32 = ["dep:embassy-stm32"]
+esp32 = []
 ch32 = []
  
 [dependencies]
+cfg-if = { version = "1.0.5" }
 embassy-stm32 = { version = "0.6.0", optional = true}
