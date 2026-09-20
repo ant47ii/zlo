@@ -68,12 +68,15 @@ where
 	}
 
 	/// Движение
-	pub fn arcade_drive(&mut self, move_value: i8, rotate_value: i8) {
+	pub fn arcade_drive(&mut self, move_value: i16, rotate_value: i16) { // TODO: почему бы здесь не использовать i16 ?
 		let move_value = move_value.clamp(-100, 100);
 		let rotate_value = rotate_value.clamp(-100, 100);
 
-		let left = move_value + rotate_value;
-		let right = move_value - rotate_value;
+		let left_raw = move_value as i16 + rotate_value as i16;
+		let right_raw = move_value as i16 - rotate_value as i16;
+
+		let left = left_raw.clamp(-100, 100) as i8;
+		let right = right_raw.clamp(-100, 100) as i8;
 
 		self.set_speed(Side::Left, left);
 		self.set_speed(Side::Right, right);
