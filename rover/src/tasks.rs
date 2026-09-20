@@ -1,7 +1,10 @@
-use embedded_hal::{pwm::SetDutyCycle};
+use defmt::info;
 use radio::{JoystickCommand, JoystickCoords};
-use embassy_sync::{channel::{DynamicReceiver, DynamicSender}, watch::{DynReceiver, DynSender}};
-use embassy_time::{Duration, with_timeout};
+use embassy_time::{Duration, Timer, with_timeout};
+
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::{Channel, DynamicReceiver, DynamicSender};
+use embassy_sync::watch::{Watch, DynReceiver, DynSender};
 
 use crate::drive::{RoverDrive};
 
@@ -13,53 +16,75 @@ type Stm32SpiDevice = embedded_hal_bus::spi::ExclusiveDevice<Stm32SpiBus, Stm32C
 type Stm32NrfRx = radio::NrfRx<Stm32CePin, Stm32SpiDevice>;
 
 type Stm32Rover = RoverDrive<
-    embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>
+	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>
 >;
+
+// один отправитель, несколько подписчиков
+// хранит только одно состояние
+// хранит только самое свежее состояние
+pub static COORDS_WATCH: Watch<CriticalSectionRawMutex, radio::JoystickCoords, 1> = Watch::new();		// 1 - максимальнрое количество подписчиков
+
+// один отправитель, один подписчик
+// максимум читает одна таска
+// хранит все сообщения, новые данные встают в конец очереди
+pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, radio::JoystickCommand, 4> = Channel::new();		// 4 - кольцевой буфер
 
 /// Слушает радио
 #[embassy_executor::task]
 pub async fn radio_task(
-    coords_sender: DynSender<'static, JoystickCoords>,
-    cmd_sender: DynamicSender<'static, JoystickCommand>,
-	rx: Stm32NrfRx
-) {
-    radio::run_radio_reader(rx, &coords_sender, &cmd_sender).await;
+	coords_sender: DynSender<'static, JoystickCoords>,
+	cmd_sender: DynamicSender<'static, JoystickCommand>,
+	mut rx: Stm32NrfRx
+) 
+{
+	info!("Задание radio запущено");
+	loop {
+		match radio::read(&mut rx).await {
+			Ok(radio_package) => {			
+				if radio_package.is_some() {
+					match radio_package.unwrap() {
+							radio::RadioPackage::Coords(coords) => coords_sender.send(coords),
+							radio::RadioPackage::Command(command) => cmd_sender.send(command).await,
+						}
+				}
+			},
+			Err(_) => {}
+		}
+
+		Timer::after_millis(10).await;	// TODO: const
+	}
 }
 
 /// Управляет моторами
 #[embassy_executor::task]
 pub async fn motor_task(
-    coords_receiver: DynReceiver<'static, JoystickCoords>, 
-    drive: Stm32Rover
-) {
-    run_rover_control(coords_receiver, drive).await;
-}
-
-async fn run_rover_control<CH>(
-    mut coords_receiver: DynReceiver<'static, JoystickCoords>, 
-    mut drive: RoverDrive<CH>
-)
-where
-    CH: SetDutyCycle
+	mut coords_receiver: DynReceiver<'static, JoystickCoords>, 
+	mut drive: Stm32Rover
+) 
 {
-    loop {
-        match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const
-            Ok(coords) => {
-                drive.arcade_drive(coords.x, coords.y);
-            }
-            Err(_timeout) => {
-                drive.arcade_drive(0, 0);
-            }
-        }
-    }
+	info!("Задание motor запущено");
+	loop {
+		match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const
+			Ok(coords) => {
+				drive.arcade_drive(coords.x, coords.y);
+			}
+			Err(_timeout) => {
+				drive.arcade_drive(0, 0);
+			}
+		}
+	}
 }
 
 #[embassy_executor::task]
-pub async fn hardware_task(cmd_receiver: DynamicReceiver<'static, JoystickCommand>) {
+pub async fn hardware_task(
+	cmd_receiver: DynamicReceiver<'static, JoystickCommand>
+) 
+{
+	info!("Задание hardware запущено");
 	loop {
 		let cmd = cmd_receiver.receive().await;
 		match cmd {
-            
-        }
+			
+		}
 	}
 }

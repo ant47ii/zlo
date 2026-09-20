@@ -1,30 +1,14 @@
 use core::convert::Infallible;
 
-use embedded_nrf24l01_async::Configuration;
+use embedded_nrf24l01_async::{Configuration};
 use serde::{Deserialize, Serialize};
-
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Channel, DynamicSender};
-use embassy_sync::watch::{DynSender, Watch};
 
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::spi::SpiDevice;
 
 use embassy_time::{Duration, Timer, with_timeout};
 
-use defmt::{error};
-
 use crate::{NrfRx, NrfTx};
-
-// один отправитель, несколько подписчиков
-// хранит только одно состояние
-// хранит только самое свежее состояние
-pub static COORDS_WATCH: Watch<CriticalSectionRawMutex, JoystickCoords, 1> = Watch::new();		// 1 - максимальнрое количество подписчиков
-
-// один отправитель, один подписчик
-// максимум читает одна таска
-// хранит все сообщения, новые данные встают в конец очереди
-pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, JoystickCommand, 4> = Channel::new();		// 4 - кольцевой буфер
 
 /// Джойстик
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -53,7 +37,7 @@ pub async fn send<CE, SPI>(
 ) -> bool
 where
 	CE: OutputPin<Error = Infallible>,
-	SPI: SpiDevice,
+	SPI: SpiDevice
 {
 	if !tx.can_send().await.unwrap() {
 		return false;
@@ -79,52 +63,32 @@ where
 	}
 }
 
-async fn parse_and_route_packet(
-	payload: &[u8],
-	coords_sender: &DynSender<'static, JoystickCoords>,
-	cmd_sender: &DynamicSender<'static, JoystickCommand>
-) {
-	match postcard::from_bytes::<RadioPackage>(payload) {
-		Ok(RadioPackage::Coords(coords)) => {
-			coords_sender.send(coords);
-		}
-		Ok(RadioPackage::Command(command)) => {
-			cmd_sender.send(command).await;
-		}
-		Err(_) => {
-		}
-	}
-}
-
-// TODO: не та зона ответственности
-pub async fn run_radio_reader<CE, SPI>(
-	mut rx: NrfRx<CE, SPI>,
-	coords_sender: &DynSender<'static, JoystickCoords>,
-	cmd_sender: &DynamicSender<'static, JoystickCommand>
-)
+/// прочитать эфир
+pub async fn read<CE, SPI>(
+	rx: &mut NrfRx<CE, SPI>
+) -> Result<Option<RadioPackage>, &'static str> 
 where
 	CE: OutputPin,
-	SPI: SpiDevice,
+	SPI: SpiDevice 
 {
-	loop {
-		match rx.can_read().await {
-			Ok(Some(_)) => {
-				match rx.read().await {
-					Ok(payload) => {
-						parse_and_route_packet(&payload, &coords_sender, &cmd_sender).await;
-					}
-					Err(e) => {
-						error!("Ошибка чтения пакета из FIFO: {:?}", defmt::Debug2Format(&e));
-					}
+	match rx.can_read().await {
+		Ok(Some(_)) => {
+			let read_result = rx.read().await;
+			rx.clear_interrupts().await.unwrap();
+
+			match read_result {
+				Ok(payload) => {
+					let radio_package = postcard::from_bytes::<RadioPackage>(&payload);
+					Ok(radio_package.ok())
 				}
-				rx.clear_interrupts().await.unwrap();
-			}
-			Ok(None) => {}
-			Err(e) => {
-				error!("Ошибка опроса регистра статуса nRF: {:?}", defmt::Debug2Format(&e));
+				Err(_) => {
+					return Err("Ошибка чтения пакета из FIFO");
+				}
 			}
 		}
-		
-		Timer::after_millis(10).await;	// TODO: const
+		Ok(None) => { Ok(None) }
+		Err(_) => {
+			Err("Ошибка опроса регистра статуса nRF")
+		}
 	}
 }
