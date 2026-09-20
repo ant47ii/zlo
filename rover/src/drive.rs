@@ -1,13 +1,14 @@
-use embedded_hal::pwm::SetDutyCycle;
+use embedded_hal::{digital::OutputPin, pwm::SetDutyCycle};
 
 pub enum Side {
 	Left,
 	Right,
 }
 
-pub struct RoverDrive<CH> 
+pub struct RoverDrive<CH, STBY> 
 where
-	CH: SetDutyCycle
+	CH: SetDutyCycle, 
+	STBY: OutputPin
 {
 	// Левый борт
 	ch_left_fwd: CH,  // AIN1
@@ -15,29 +16,36 @@ where
 	// Правый борт
 	ch_right_fwd: CH, // BIN1
 	ch_right_rev: CH, // BIN2
+
+	stby: STBY,
 	
 	max_duty: u16,
 	safe_max_duty: u32
 }
 
-impl<CH> RoverDrive<CH>
+impl<CH, STBY> RoverDrive<CH, STBY>
 where
-	CH: SetDutyCycle
+	CH: SetDutyCycle,
+	STBY: OutputPin
 {
 	pub fn new(
 		ch1_bin2: CH,
 		ch2_bin1: CH,
 		ch3_ain1: CH,
-		ch4_ain2: CH
+		ch4_ain2: CH,
+		mut stby: STBY
 	) -> Self {
 		let max_duty = ch1_bin2.max_duty_cycle();
 		let safe_max_duty = (max_duty as u32 * 80) / 100;
+
+		let _ = stby.set_high();
 
 		Self {
 			ch_left_fwd: ch3_ain1,
 			ch_left_rev: ch4_ain2,
 			ch_right_fwd: ch2_bin1,
 			ch_right_rev: ch1_bin2,
+			stby,
 			max_duty,
 			safe_max_duty
 		}
@@ -68,7 +76,7 @@ where
 	}
 
 	/// Движение
-	pub fn arcade_drive(&mut self, move_value: i8, rotate_value: i8) { // TODO: почему бы здесь не использовать i16 ?
+	pub fn arcade_drive(&mut self, move_value: i8, rotate_value: i8) {
 		let move_value = move_value.clamp(-100, 100);
 		let rotate_value = rotate_value.clamp(-100, 100);
 

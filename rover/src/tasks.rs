@@ -16,7 +16,8 @@ type Stm32SpiDevice = embedded_hal_bus::spi::ExclusiveDevice<Stm32SpiBus, Stm32C
 type Stm32NrfRx = radio::NrfRx<Stm32CePin, Stm32SpiDevice>;
 
 type Stm32Rover = RoverDrive<
-	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>
+	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>,
+	embassy_stm32::gpio::Output<'static>
 >;
 
 // один отправитель, несколько подписчиков
