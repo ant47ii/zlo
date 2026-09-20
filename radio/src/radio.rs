@@ -6,7 +6,7 @@ use embedded_hal_async::spi::SpiDevice;
 use embedded_nrf24l01_async::{Configuration, CrcMode, DataRate, NRF24L01, RxMode, StandbyMode, TxMode};
 
 /// Задержка опроса радио (в миллисекундах)
-pub const RADIO_POLL_INTERVAL_MS: u64 = 20;
+pub const RADIO_POLL_INTERVAL_MS: u64 = 10;
 /// Номер радиочастотного канала
 const RADIO_CHANNEL: u8 = 110;
 /// Адрес

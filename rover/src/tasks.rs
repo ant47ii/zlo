@@ -52,7 +52,7 @@ pub async fn radio_task(
 			Err(_) => {}
 		}
 
-		Timer::after_millis(10).await;	// TODO: const
+		Timer::after_millis(radio::RADIO_POLL_INTERVAL_MS).await;
 	}
 }
 
@@ -65,9 +65,9 @@ pub async fn motor_task(
 {
 	info!("Задание motor запущено");
 	loop {
-		match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const
+		match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const (было 360)
 			Ok(coords) => {
-				drive.arcade_drive(coords.x, coords.y);
+				drive.arcade_drive(coords.x as i16, coords.y as i16);
 			}
 			Err(_timeout) => {
 				drive.arcade_drive(0, 0);

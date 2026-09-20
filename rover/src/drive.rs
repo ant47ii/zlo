@@ -20,7 +20,10 @@ where
 	stby: STBY,
 	
 	max_duty: u16,
-	safe_max_duty: u32
+	safe_max_duty: u32,
+
+	current_left: i16,
+	current_right: i16
 }
 
 impl<CH, STBY> RoverDrive<CH, STBY>
@@ -36,7 +39,7 @@ where
 		mut stby: STBY
 	) -> Self {
 		let max_duty = ch1_bin2.max_duty_cycle();
-		let safe_max_duty = (max_duty as u32 * 80) / 100;
+		let safe_max_duty = (max_duty as u32 * 80) / 100;	// TODO: процент передавать параметром
 
 		let _ = stby.set_high();
 
@@ -47,7 +50,9 @@ where
 			ch_right_rev: ch1_bin2,
 			stby,
 			max_duty,
-			safe_max_duty
+			safe_max_duty,
+			current_left: 0,
+			current_right: 0
 		}
 	}
 
@@ -76,18 +81,72 @@ where
 	}
 
 	/// Движение
-	pub fn arcade_drive(&mut self, move_value: i8, rotate_value: i8) {
-		let move_value = move_value.clamp(-100, 100);
-		let rotate_value = rotate_value.clamp(-100, 100);
+	pub fn arcade_drive(&mut self, target_move: i16, target_rotate: i16) {
+        // 1. Ограничиваем входящие значения от джойстика
+        let target_move = target_move.clamp(-100, 100);
+        let target_rotate = target_rotate.clamp(-100, 100);
 
-		let left_raw = move_value as i16 + rotate_value as i16;
-		let right_raw = move_value as i16 - rotate_value as i16;
+        // 2. Считаем сырые целевые значения (они могут выйти за рамки -200..200)
+        let raw_left = target_move + target_rotate;
+        let raw_right = target_move - target_rotate;
 
-		let left = left_raw.clamp(-100, 100) as i8;
-		let right = right_raw.clamp(-100, 100) as i8;
+        // 3. ПРОПОРЦИОНАЛЬНОЕ МАСШТАБИРОВАНИЕ (Приоритет поворота)
+        // Находим максимальный модуль скорости среди обоих бортов
+        let max_val = raw_left.abs().max(raw_right.abs());
 
-		self.set_speed(Side::Left, left);
-		self.set_speed(Side::Right, right);
+        let (target_left, target_right) = if max_val > 100 {
+            // Если вылетели за 100%, сжимаем оба борта обратно к 100%, сохраняя пропорцию руления.
+            // Теперь при move=100 и rotate=100 мы получим left=100, right=-100 вместо (100, 0)
+            (
+                (raw_left * 100) / max_val,
+                (raw_right * 100) / max_val
+            )
+        } else {
+            (raw_left, raw_right)
+        };
+
+        // 4. КОНСТАНТЫ ЛИНЕЙНОГО ШАГА (Скорректированы под интервал 10 мс)
+        const ACCEL_STEP: i16 = 8;   // Разгон от 0 до 100 займет ~125 мс
+        const BRAKE_STEP: i16 = 40;  // Торможение от 100 до 0 займет ~25 мс
+
+        // Вспомогательная функция расчета шага
+        #[inline(always)]
+        fn calc_next_speed(current: i16, target: i16, accel: i16, brake: i16) -> i16 {
+            if current == target {
+                return current;
+            }
+
+            // Проверяем, разгоняемся ли мы: знаки совпадают и цель дальше от нуля, чем текущая
+            let is_accel = (target > 0 && current >= 0 && target > current) 
+                        || (target < 0 && current <= 0 && target < current);
+            
+            let step = if is_accel { accel } else { brake };
+
+            if current < target {
+                current.saturating_add(step).min(target)
+            } else {
+                current.saturating_sub(step).max(target)
+            }
+        }
+
+        // 5. Применяем линейный фильтр к каждому борту отдельно
+        self.current_left = calc_next_speed(self.current_left, target_left, ACCEL_STEP, BRAKE_STEP);
+        self.current_right = calc_next_speed(self.current_right, target_right, ACCEL_STEP, BRAKE_STEP);
+
+        let left_i8 = self.current_left as i8;
+        let right_i8 = self.current_right as i8;
+
+        // 6. Управление пином STBY (если вы его используете, иначе оставьте set_high)
+        // Гасим драйвер только если джойстик в нуле И моторы полностью остановились
+        //if left_i8 == 0 && right_i8 == 0 && target_move == 0 && target_rotate == 0 {
+        //    self.stby.set_low().unwrap(); 
+        //} else {
+        //    self.stby.set_high().unwrap();
+        //}
+
+        // 7. Отправка финальных значений в ШИМ-драйвер
+        self.set_speed(Side::Left, left_i8);
+        self.set_speed(Side::Right, right_i8);
 	}
 
 }
