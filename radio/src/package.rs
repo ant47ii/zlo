@@ -48,20 +48,25 @@ where
 		return false;
 	}
 
-	let result = with_timeout(Duration::from_millis(75), async { // TODO: const
+	let result = with_timeout(Duration::from_millis(5), async { // TODO: const
 		loop {
 			match tx.poll_send().await {
 				Ok(ack_received) => return ack_received,
-				Err(_) =>  Timer::after_micros(500).await
+				Err(_) => Timer::after_micros(0).await
 			}
 		}
 	}).await;
 
 	match result {
 		Ok(ack_status) => ack_status,
-		Err(_timeout_error) => false
+		Err(_timeout_error) => { 
+			let _ = tx.flush_tx().await;
+			let _ = tx.clear_interrupts().await;
+			false
+		}
 	}
 }
+
 
 /// прочитать эфир
 pub async fn read<CE, SPI>(
@@ -72,11 +77,8 @@ where
 	SPI: SpiDevice 
 {
 	match rx.can_read().await {
-		Ok(Some(_)) => {
-			let read_result = rx.read().await;
-			rx.clear_interrupts().await.unwrap();
-
-			match read_result {
+		Ok(Some(_)) => {			
+			match rx.read().await {
 				Ok(payload) => {
 					let radio_package = postcard::from_bytes::<RadioPackage>(&payload);
 					Ok(radio_package.ok())
@@ -91,4 +93,12 @@ where
 			Err("Ошибка опроса регистра статуса nRF")
 		}
 	}
+}
+
+pub async fn clear_interrupts<CE, SPI>(rx: &mut NrfRx<CE, SPI>) 
+where
+	CE: OutputPin,
+	SPI: SpiDevice 
+{
+	let _ = rx.clear_interrupts().await;
 }

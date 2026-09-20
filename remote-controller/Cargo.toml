@@ -35,9 +35,7 @@ ssd1306 = { version = "0.10.0", features = ["async"] }
 
 
 heapless = { version = "0.9.3"}
-
-
-panic-halt = "1.0.0"
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 
 
 [profile.dev]

@@ -40,18 +40,14 @@ pub async fn radio_task(
 {
 	info!("Задание radio запущено");
 	loop {
-		match radio::read(&mut rx).await {
-			Ok(radio_package) => {			
-				if radio_package.is_some() {
-					match radio_package.unwrap() {
-							radio::RadioPackage::Coords(coords) => coords_sender.send(coords),
-							radio::RadioPackage::Command(command) => cmd_sender.send(command).await,
-						}
-				}
-			},
-			Err(_) => {}
-		}
+        while let Ok(Some(radio_package)) = radio::read(&mut rx).await {
+            match radio_package {
+                radio::RadioPackage::Coords(coords) => { coords_sender.send(coords); }
+                radio::RadioPackage::Command(command) => { cmd_sender.send(command).await; }
+            }
+        }
 
+		let _ = radio::clear_interrupts(&mut rx).await;
 		Timer::after_millis(radio::RADIO_POLL_INTERVAL_MS).await;
 	}
 }
@@ -65,13 +61,9 @@ pub async fn motor_task(
 {
 	info!("Задание motor запущено");
 	loop {
-		match with_timeout(Duration::from_millis(360), coords_receiver.changed()).await { // TODO: const (было 360)
-			Ok(coords) => {
-				drive.arcade_drive(coords.x as i16, coords.y as i16);
-			}
-			Err(_timeout) => {
-				drive.arcade_drive(0, 0);
-			}
+		match with_timeout(Duration::from_millis(100), coords_receiver.changed()).await { // TODO: const
+			Ok(coords) => { drive.arcade_drive(coords.x as i16, coords.y as i16); }
+			Err(_timeout) => { drive.arcade_drive(0, 0); }
 		}
 	}
 }

@@ -27,7 +27,7 @@ use defmt_rtt as _;
 
 use embassy_stm32::dma::InterruptHandler;
 use embassy_stm32::{bind_interrupts, i2c, peripherals};
-use panic_halt as _;
+use panic_probe as _;
 
 use embassy_executor::{self as _}; 
 use embassy_executor::Spawner;
@@ -214,7 +214,7 @@ async fn main(_spawner: Spawner) {
 			}
 		}
 
-		display.flush().await.unwrap();
+		//display.flush().await.unwrap();
 		Timer::after_millis(RADIO_POLL_INTERVAL_MS).await;
 	}
 }
