@@ -68,7 +68,7 @@ where
 	}
 
 	/// Движение
-	pub fn arcade_drive(&mut self, move_value: i16, rotate_value: i16) { // TODO: почему бы здесь не использовать i16 ?
+	pub fn arcade_drive(&mut self, move_value: i8, rotate_value: i8) { // TODO: почему бы здесь не использовать i16 ?
 		let move_value = move_value.clamp(-100, 100);
 		let rotate_value = rotate_value.clamp(-100, 100);
 
