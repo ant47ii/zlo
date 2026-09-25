@@ -9,14 +9,7 @@ use embassy_stm32::i2c::I2c;
 use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, MSIRange, Pll, PllDiv, PllMul, PllPreDiv, PllSource, Sysclk};
 use embassy_stm32::time::Hertz;
 
-use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::pixelcolor::BinaryColor;
 use radio::{RADIO_POLL_INTERVAL_MS, init_tx_radio};
-use ssd1306::mode::{DisplayConfigAsync};
-use ssd1306::rotation::DisplayRotation;
-use ssd1306::size::DisplaySize128x64;
-use ssd1306::{I2CDisplayInterface, Ssd1306Async};
-
 use embassy_time::{Timer};
 
 use defmt_rtt as _;
@@ -30,12 +23,10 @@ use embassy_executor::Spawner;
 use embassy_stm32::gpio::{ Level, Output, Speed};
 use embassy_stm32::spi::{ Spi};
 
-
 #[allow(unused)]
 fn setup_timestamp() {
 	defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
 }
-
 
 bind_interrupts!(struct Irqs {
 	// NRF24
@@ -147,10 +138,8 @@ async fn main(spawner: Spawner) {
 		embassy_stm32::i2c::Config::default(),
 	);
 
-	let interface = I2CDisplayInterface::new(i2c);
-	let mut display = Ssd1306Async::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_buffered_graphics_mode();
-	display.init().await.unwrap();
-	display.clear(BinaryColor::Off).unwrap();
+	let mut display = display::OledDisplay::new(i2c);
+	display.init().await;
 
 	// ==========================================
 	//               JOYSTICK

@@ -68,7 +68,6 @@ where
 	}
 }
 
-
 /// прочитать эфир
 pub async fn read<CE, SPI>(
 	rx: &mut NrfRx<CE, SPI>
