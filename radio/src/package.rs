@@ -27,6 +27,7 @@ pub enum JoystickCommand {
 pub enum RadioPackage {
 	Coords(JoystickCoords),
 	Command(JoystickCommand)
+	// TODO: добавить рукопожатие?
 }
 
 /// Отправить пакет

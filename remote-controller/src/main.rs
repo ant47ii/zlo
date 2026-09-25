@@ -2,19 +2,15 @@
 #![no_main]
 
 mod display;
+mod tasks;
 
 use embassy_stm32::adc::{ Adc, AdcChannel};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, MSIRange, Pll, PllDiv, PllMul, PllPreDiv, PllSource, Sysclk};
 use embassy_stm32::time::Hertz;
-use embedded_graphics::Drawable;
+
 use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::geometry::Point;
-use embedded_graphics::mono_font::MonoTextStyleBuilder;
-use embedded_graphics::mono_font::iso_8859_1::FONT_6X10;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::text::Text;
-use heapless::String;
 use radio::{RADIO_POLL_INTERVAL_MS, init_tx_radio};
 use ssd1306::mode::{DisplayConfigAsync};
 use ssd1306::rotation::DisplayRotation;
@@ -34,30 +30,30 @@ use embassy_executor::Spawner;
 use embassy_stm32::gpio::{ Level, Output, Speed};
 use embassy_stm32::spi::{ Spi};
 
-use core::fmt::Write;
 
 #[allow(unused)]
 fn setup_timestamp() {
 	defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
 }
 
+
 bind_interrupts!(struct Irqs {
+	// NRF24
+	GPDMA1_CHANNEL0 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH0>;
+	GPDMA1_CHANNEL1 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH1>;
+
 	// DISPLAY
 	I2C1_EV => i2c::EventInterruptHandler<peripherals::I2C1>;
 	I2C1_ER => i2c::ErrorInterruptHandler<peripherals::I2C1>;
 	GPDMA1_CHANNEL2 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH2>;
 	GPDMA1_CHANNEL3 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH3>;
 
-	// NRF24
-	GPDMA1_CHANNEL0 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH0>;
-	GPDMA1_CHANNEL1 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH1>;
-
 	// JOYSTIC
 	GPDMA1_CHANNEL4 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH4>;
 });
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
 	// ==========================================
 	//                 SYS
 	// ==========================================
@@ -156,11 +152,6 @@ async fn main(_spawner: Spawner) {
 	display.init().await.unwrap();
 	display.clear(BinaryColor::Off).unwrap();
 
-	let text_style = MonoTextStyleBuilder::new()
-		.font(&FONT_6X10)
-		.text_color(BinaryColor::On)
-		.build();
-
 	// ==========================================
 	//               JOYSTICK
 	// ==========================================
@@ -183,38 +174,33 @@ async fn main(_spawner: Spawner) {
 	joy.calibrate().await;
 
 
-	let mut text_buffer: String<32> = String::new();
 	let mut radio_buffer = [0u8; 16];
+
+
+	//let display_send = tasks::DISPLAY_WATCH.dyn_sender();
+	let display_recv = tasks::DISPLAY_WATCH.dyn_receiver().unwrap();
+
+	spawner.spawn(tasks::display_task(display_recv, display).unwrap());
 
 	loop {
 		let values = joy.read().await;
 		let joy_x: i8 = joystick::apply_joystick_expo(values.x, 0.4);
 		let joy_y: i8 = joystick::apply_joystick_expo(values.y, 0.4);
+	
+		let mut success = false; 
 
-		display.clear(BinaryColor::Off).unwrap();
-		text_buffer.clear();
-		write!(text_buffer, "{} : {}", joy_x, joy_y).unwrap();
-
-		Text::new(&text_buffer, Point::new(10, 20), text_style)
-			.draw(&mut display)
-			.unwrap();
-		
 		if joy_x != 0 || joy_y != 0 {
 			let radio_package = radio::RadioPackage::Coords(radio::JoystickCoords { x: joy_x, y: joy_y });
-			let success = radio::send(&mut tx, radio_package, &mut radio_buffer).await;
-			
-			if success {
-				Text::new("OK", Point::new(10, 40), text_style)
-					.draw(&mut display)
-					.unwrap();
-			} else {
-				Text::new("ERROR", Point::new(10, 40), text_style)
-					.draw(&mut display)
-					.unwrap();
-			}
+			success = radio::send(&mut tx, radio_package, &mut radio_buffer).await;
 		}
 
-		//display.flush().await.unwrap();
+		let current_state = tasks::DisplayState {
+			tx_status: success,
+			joy_x: joy_x,
+			joy_y: joy_y,
+		};
+		
+		tasks::DISPLAY_WATCH.sender().send(current_state);
 		Timer::after_millis(RADIO_POLL_INTERVAL_MS).await;
 	}
 }
