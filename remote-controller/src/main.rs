@@ -6,7 +6,7 @@ mod tasks;
 
 use embassy_stm32::adc::{ Adc, AdcChannel};
 use embassy_stm32::i2c::I2c;
-use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, MSIRange, Pll, PllDiv, PllMul, PllPreDiv, PllSource, Sysclk};
+use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, Hse, HseMode, Pll, PllDiv, PllMul, PllPreDiv, PllSource, Sysclk};
 use embassy_stm32::time::Hertz;
 
 use radio::{RADIO_POLL_INTERVAL_MS, init_tx_radio};
@@ -48,34 +48,32 @@ async fn main(spawner: Spawner) {
 	// ==========================================
 	//                 SYS
 	// ==========================================
-	/*let mut config = embassy_stm32::Config::default();
-
-	config.rcc.msis = Some(MSIRange::RANGE_48MHZ);
-	config.rcc.sys = Sysclk::MSIS;
-	config.rcc.ahb_pre = AHBPrescaler::DIV1;
-	config.rcc.apb1_pre = APBPrescaler::DIV1;
-	config.rcc.apb2_pre = APBPrescaler::DIV1;
-	config.rcc.apb3_pre = APBPrescaler::DIV1;
-
-	let p = embassy_stm32::init(config);*/
 	let mut config = embassy_stm32::Config::default();
 
-	config.rcc.msis = Some(MSIRange::RANGE_4MHZ);
-	config.rcc.sys = Sysclk::PLL1_R;
-	
-	config.rcc.pll1 = Some(Pll {
-		source: PllSource::MSIS,     // Источник: MSIS (4 МГц)
-		prediv: PllPreDiv::DIV1,     // Предделитель: /1 (вход PLL = 4 МГц)
-		mul: PllMul::MUL40,         // Умножитель: *50 (VCO = 200 МГц)
-		divp: None,
-		divq: None,
-		divr: Some(PllDiv::DIV2),   // Выход R: /2 (200 МГц / 2 = 100 МГц)
+	config.rcc.voltage_range = embassy_stm32::rcc::VoltageScale::RANGE1;
+
+	config.rcc.hse = Some(Hse {
+		freq: Hertz(25_000_000),
+		mode: HseMode::Oscillator
 	});
 
+	config.rcc.sys = Sysclk::PLL1_R;
+
+	config.rcc.pll1 = Some(Pll {
+		source: PllSource::HSE,
+		prediv: PllPreDiv::DIV5,
+		mul: PllMul::MUL64,
+		divp: None,
+		divq: None,
+		divr: Some(PllDiv::DIV2),
+	});	
+
 	config.rcc.ahb_pre = AHBPrescaler::DIV1;
-	config.rcc.apb1_pre = APBPrescaler::DIV1;
-	config.rcc.apb2_pre = APBPrescaler::DIV1;
-	config.rcc.apb3_pre = APBPrescaler::DIV1;
+	config.rcc.apb1_pre = APBPrescaler::DIV2;
+	config.rcc.apb2_pre = APBPrescaler::DIV2;
+	config.rcc.apb3_pre = APBPrescaler::DIV2;
+
+	config.rcc.mux.adcdacsel = embassy_stm32::rcc::mux::Adcdacsel::HSE;
 
 
 	let p = embassy_stm32::init(config);
