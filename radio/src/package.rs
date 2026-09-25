@@ -44,8 +44,9 @@ where
 		return false;
 	}
 
+	buffer.fill(0);
 	let packet = postcard::to_slice(&radio_package, buffer).unwrap();
-	if let Err(_) = tx.send(&packet).await {
+	if let Err(_) = tx.send(packet).await {
 		return false;
 	}
 
