@@ -8,20 +8,20 @@ use embassy_stm32::adc::{ Adc, AdcChannel};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, Hse, HseMode, Pll, PllDiv, PllMul, PllPreDiv, PllSource, Sysclk};
 use embassy_stm32::time::Hertz;
+use embassy_stm32::dma::InterruptHandler;
+use embassy_stm32::{bind_interrupts, i2c};
+use embassy_stm32::gpio::{ Level, Output, Speed};
+use embassy_stm32::spi::{ Spi};
 
-use radio::{RADIO_POLL_INTERVAL_MS, init_tx_radio};
 use embassy_time::{Timer};
 
 use defmt_rtt as _;
 
-use embassy_stm32::dma::InterruptHandler;
-use embassy_stm32::{bind_interrupts, i2c, peripherals};
 use panic_probe as _;
 
 use embassy_executor::{self as _}; 
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{ Level, Output, Speed};
-use embassy_stm32::spi::{ Spi};
+
 
 #[allow(unused)]
 fn setup_timestamp() {
@@ -34,8 +34,8 @@ bind_interrupts!(struct Irqs {
 	GPDMA1_CHANNEL1 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH1>;
 
 	// DISPLAY
-	I2C1_EV => i2c::EventInterruptHandler<peripherals::I2C1>;
-	I2C1_ER => i2c::ErrorInterruptHandler<peripherals::I2C1>;
+	I2C1_EV => i2c::EventInterruptHandler<embassy_stm32::peripherals::I2C1>;
+	I2C1_ER => i2c::ErrorInterruptHandler<embassy_stm32::peripherals::I2C1>;
 	GPDMA1_CHANNEL2 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH2>;
 	GPDMA1_CHANNEL3 => InterruptHandler<embassy_stm32::peripherals::GPDMA1_CH3>;
 
@@ -53,7 +53,7 @@ async fn main(spawner: Spawner) {
 	config.rcc.voltage_range = embassy_stm32::rcc::VoltageScale::RANGE1;
 
 	config.rcc.hse = Some(Hse {
-		freq: Hertz(25_000_000),
+		freq: Hertz::mhz(25),
 		mode: HseMode::Oscillator
 	});
 
@@ -74,7 +74,6 @@ async fn main(spawner: Spawner) {
 	config.rcc.apb3_pre = APBPrescaler::DIV2;
 
 	config.rcc.mux.adcdacsel = embassy_stm32::rcc::mux::Adcdacsel::HSE;
-
 
 	let p = embassy_stm32::init(config);
 	
@@ -121,7 +120,7 @@ async fn main(spawner: Spawner) {
 		embassy_time::Delay
 	).unwrap();
 
-	let mut tx = init_tx_radio(ce, spi_device).await;
+	let mut tx = radio::init_tx_radio(ce, spi_device).await;
 
 	// ==========================================
 	//                 DISPLAY
@@ -160,9 +159,10 @@ async fn main(spawner: Spawner) {
  	let mut joy = joystick::Joystick::new(platform_reader);
 	joy.calibrate().await;
 
-
+	// ==========================================
+	//               MAIN
+	// ==========================================
 	let mut radio_buffer = [0u8; 16];
-
 
 	//let display_send = tasks::DISPLAY_WATCH.dyn_sender();
 	let display_recv = tasks::DISPLAY_WATCH.dyn_receiver().unwrap();
@@ -188,6 +188,6 @@ async fn main(spawner: Spawner) {
 		};
 		
 		tasks::DISPLAY_WATCH.sender().send(current_state);
-		Timer::after_millis(RADIO_POLL_INTERVAL_MS).await;
+		Timer::after_millis(radio::RADIO_POLL_INTERVAL_MS).await;
 	}
 }

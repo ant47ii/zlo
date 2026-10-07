@@ -2,11 +2,10 @@
 #![no_main]
 
 mod tasks;
-mod drive;
 
-use crate::drive::{RoverDrive};
-use crate::tasks::{motor_task, radio_task, hardware_task};
+use crate::tasks::{hardware_task, motor_task, radio_task};
 use ::radio::{ init_rx_radio};
+use ::drive::RoverDrive;
 
 use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 
@@ -19,6 +18,7 @@ use embassy_executor::{self as _};
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, OutputType, Speed};
 use embassy_stm32::spi::Spi;
+use static_cell::StaticCell;
 
 #[allow(unused)]
 fn setup_timestamp() {
@@ -30,6 +30,11 @@ bind_interrupts!(struct Irqs {
 	DMA1_CHANNEL1 => embassy_stm32::dma::InterruptHandler<peripherals::DMA1_CH1>;
 	DMA1_CHANNEL2 => embassy_stm32::dma::InterruptHandler<peripherals::DMA1_CH2>;
 });
+
+pub type Stm32Rover = RoverDrive<
+	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>,
+	embassy_stm32::gpio::Output<'static>
+>;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -79,13 +84,16 @@ async fn main(spawner: Spawner) {
 	parts.ch3.enable();
 	parts.ch4.enable();
 
-	let drive = RoverDrive::new(
+	let rover_instance/*: Stm32Rover*/  = RoverDrive::new(
 		parts.ch1, 
 		parts.ch2, 
 		parts.ch3, 
 		parts.ch4,
 		stby
 	);
+
+	static ROVER_CELL: StaticCell<Stm32Rover> = StaticCell::new();
+	let static_rover = ROVER_CELL.init(rover_instance);
 
 	// ==========================================
 	//                 NRF24
@@ -136,7 +144,7 @@ async fn main(spawner: Spawner) {
 	let cmd_recv = tasks::CMD_CHANNEL.dyn_receiver();
 
 	spawner.spawn(radio_task(coords_send, cmd_send, rx).unwrap());
-	spawner.spawn(motor_task(coords_recv, drive).unwrap());
+	spawner.spawn(motor_task(coords_recv, static_rover).unwrap());
 	spawner.spawn(hardware_task(cmd_recv).unwrap());
 
 	

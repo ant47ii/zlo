@@ -1,4 +1,5 @@
 use defmt::info;
+use drive::Rover;
 use radio::{JoystickCommand, JoystickCoords};
 use embassy_time::{Duration, Timer, with_timeout};
 
@@ -6,19 +7,12 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, DynamicReceiver, DynamicSender};
 use embassy_sync::watch::{Watch, DynReceiver, DynSender};
 
-use crate::drive::{RoverDrive};
-
 // унести?
 type Stm32SpiBus = embassy_stm32::spi::Spi<'static, embassy_stm32::mode::Async, embassy_stm32::spi::mode::Master>;
 type Stm32CePin = embassy_stm32::gpio::Output<'static>;
 type Stm32CsPin = embassy_stm32::gpio::Output<'static>;
 type Stm32SpiDevice = embedded_hal_bus::spi::ExclusiveDevice<Stm32SpiBus, Stm32CsPin, embassy_time::Delay>;
 type Stm32NrfRx = radio::NrfRx<Stm32CePin, Stm32SpiDevice>;
-
-type Stm32Rover = RoverDrive<
-	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>,
-	embassy_stm32::gpio::Output<'static>
->;
 
 // один отправитель, несколько подписчиков
 // хранит только одно состояние
@@ -56,7 +50,7 @@ pub async fn radio_task(
 #[embassy_executor::task]
 pub async fn motor_task(
 	mut coords_receiver: DynReceiver<'static, JoystickCoords>, 
-	mut drive: Stm32Rover
+	drive: &'static mut dyn Rover
 ) 
 {
 	info!("Задание motor запущено");
