@@ -1,6 +1,6 @@
-use embedded_hal::{digital::OutputPin, pwm::SetDutyCycle};
+use embedded_hal::pwm::SetDutyCycle;
 
-pub trait Rover: 'static {
+pub trait Rover {
 	fn set_speed(&mut self, side: Side, speed: i8);
 	fn arcade_drive(&mut self, target_move: i16, target_rotate: i16);
 }
@@ -10,19 +10,25 @@ pub enum Side {
 	Right,
 }
 
-pub struct RoverDrive<CH, STBY> 
+pub struct RoverSide<CH> {
+	fwd: CH,
+	rev: CH
+}
+
+impl<CH> RoverSide<CH> {
+	pub fn new(fwd: CH, rev: CH) -> Self {
+		Self { fwd, rev }
+	}
+}
+
+pub struct RoverDrive<CH> 
 where
-	CH: SetDutyCycle,
-	STBY: OutputPin
+	CH: SetDutyCycle
 {
 	// Левый борт
-	ch_left_fwd: CH,  // AIN1
-	ch_left_rev: CH,  // AIN2
+	left: RoverSide<CH>,
 	// Правый борт
-	ch_right_fwd: CH, // BIN1
-	ch_right_rev: CH, // BIN2
-
-	stby: STBY,
+	right : RoverSide<CH>,
 	
 	max_duty: u16,
 	safe_max_duty: u32,
@@ -31,30 +37,17 @@ where
 	current_right: i16
 }
 
-impl<CH, STBY> RoverDrive<CH, STBY> 
+impl<CH> RoverDrive<CH> 
 where
-	CH: SetDutyCycle,
-	STBY: OutputPin 
+	CH: SetDutyCycle
 {
-	// TODO: каналы объединить в структуру - левый/правый
-	pub fn new(
-		ch1_bin2: CH,
-		ch2_bin1: CH,
-		ch3_ain1: CH,
-		ch4_ain2: CH,
-		mut stby: STBY
-	) -> Self {
-		let max_duty = ch1_bin2.max_duty_cycle();
+	pub fn new(left: RoverSide<CH>, right: RoverSide<CH>) -> Self {
+		let max_duty = left.fwd.max_duty_cycle();
 		let safe_max_duty = (max_duty as u32 * 80) / 100;	// TODO: процент передавать параметром
 
-		let _ = stby.set_high();
-
 		Self {
-			ch_left_fwd: ch3_ain1,
-			ch_left_rev: ch4_ain2,
-			ch_right_fwd: ch2_bin1,
-			ch_right_rev: ch1_bin2,
-			stby,
+			left,
+			right,
 			max_duty,
 			safe_max_duty,
 			current_left: 0,
@@ -63,10 +56,9 @@ where
 	}
 }
 
-impl<PWM, PIN> Rover for RoverDrive<PWM, PIN>
+impl<CH> Rover for RoverDrive<CH>
 where
-	PWM: SetDutyCycle + 'static,
-	PIN: OutputPin  + 'static
+	CH: SetDutyCycle
 {
 	/// Устанавливает скорость для конкретного борта (от -100 до 100)
 	fn set_speed(&mut self, side: Side, speed: i8) {
@@ -74,8 +66,8 @@ where
 
 		// Выбираем нужную пару каналов в зависимости от выбранного борта
 		let (ch_fwd, ch_rev) = match side {
-			Side::Left => (&mut self.ch_left_fwd, &mut self.ch_left_rev),
-			Side::Right => (&mut self.ch_right_fwd, &mut self.ch_right_rev),
+			Side::Left => (&mut self.left.fwd, &mut self.left.rev),
+			Side::Right => (&mut self.right.fwd, &mut self.right.rev),
 		};
 
 		if speed > 0 {
@@ -148,15 +140,6 @@ where
 		let left_i8 = self.current_left as i8;
 		let right_i8 = self.current_right as i8;
 
-		// 6. Управление пином STBY (если вы его используете, иначе оставьте set_high)
-		// Гасим драйвер только если джойстик в нуле И моторы полностью остановились
-		//if left_i8 == 0 && right_i8 == 0 && target_move == 0 && target_rotate == 0 {
-		//    self.stby.set_low().unwrap(); 
-		//} else {
-		//    self.stby.set_high().unwrap();
-		//}
-
-		// 7. Отправка финальных значений в ШИМ-драйвер
 		self.set_speed(Side::Left, left_i8);
 		self.set_speed(Side::Right, right_i8);
 	}

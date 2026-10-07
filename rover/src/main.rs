@@ -3,21 +3,18 @@
 
 mod tasks;
 
-use crate::tasks::{hardware_task, motor_task, radio_task};
-use ::radio::{ init_rx_radio};
-use ::drive::RoverDrive;
-
 use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
-
 use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, Pll, PllMul, PllPreDiv, PllRDiv, PllSource, Sysclk};
 use embassy_stm32::time::{Hertz};
-use defmt_rtt as _;
 use embassy_stm32::{bind_interrupts, peripherals};
-use panic_probe as _;
-use embassy_executor::{self as _};
-use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, OutputType, Speed};
 use embassy_stm32::spi::Spi;
+
+use embassy_executor::{self as _};
+use embassy_executor::Spawner;
+
+use defmt_rtt as _;
+use panic_probe as _;
 use static_cell::StaticCell;
 
 #[allow(unused)]
@@ -31,9 +28,8 @@ bind_interrupts!(struct Irqs {
 	DMA1_CHANNEL2 => embassy_stm32::dma::InterruptHandler<peripherals::DMA1_CH2>;
 });
 
-pub type Stm32Rover = RoverDrive<
-	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>,
-	embassy_stm32::gpio::Output<'static>
+pub type Stm32Rover = drive::RoverDrive<
+	embassy_stm32::timer::simple_pwm::SimplePwmChannel<'static, embassy_stm32::peripherals::TIM1>
 >;
 
 #[embassy_executor::main]
@@ -59,8 +55,8 @@ async fn main(spawner: Spawner) {
 	// ==========================================
 	//               DRV8833
 	// ==========================================
-
-	let stby = Output::new(p.PA12, Level::Low, Speed::Low);
+	let stby = Output::new(p.PA12, Level::High, Speed::Low);
+	core::mem::forget(stby); // не умирай пин!
 
 	let bin2_pin = PwmPin::new(p.PA8, OutputType::PushPull);
 	let bin1_pin = PwmPin::new(p.PA9, OutputType::PushPull);
@@ -84,16 +80,15 @@ async fn main(spawner: Spawner) {
 	parts.ch3.enable();
 	parts.ch4.enable();
 
-	let rover_instance/*: Stm32Rover*/  = RoverDrive::new(
-		parts.ch1, 
-		parts.ch2, 
-		parts.ch3, 
-		parts.ch4,
-		stby
+	let rover_instance/*: Stm32Rover*/  = drive::RoverDrive::new(
+		drive::RoverSide::new(parts.ch3, parts.ch4),
+		drive::RoverSide::new(parts.ch2, parts.ch1)
 	);
 
 	static ROVER_CELL: StaticCell<Stm32Rover> = StaticCell::new();
 	let static_rover = ROVER_CELL.init(rover_instance);
+
+
 
 	// ==========================================
 	//                 NRF24
@@ -129,7 +124,7 @@ async fn main(spawner: Spawner) {
 		embassy_time::Delay
 	).unwrap();
 
-	let rx = init_rx_radio(ce, spi_device).await;
+	let rx = radio::init_rx_radio(ce, spi_device).await;
 
 	// ==========================================
 	//                 MAIN
@@ -143,9 +138,9 @@ async fn main(spawner: Spawner) {
 	let cmd_send = tasks::CMD_CHANNEL.dyn_sender();
 	let cmd_recv = tasks::CMD_CHANNEL.dyn_receiver();
 
-	spawner.spawn(radio_task(coords_send, cmd_send, rx).unwrap());
-	spawner.spawn(motor_task(coords_recv, static_rover).unwrap());
-	spawner.spawn(hardware_task(cmd_recv).unwrap());
+	spawner.spawn(tasks::radio_task(coords_send, cmd_send, rx).unwrap());
+	spawner.spawn(tasks::motor_task(coords_recv, static_rover).unwrap());
+	spawner.spawn(tasks::hardware_task(cmd_recv).unwrap());
 
 	
 }
